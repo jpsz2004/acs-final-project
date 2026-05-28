@@ -1,0 +1,5 @@
+# Historia 8 — LMS Platform
+# Pure threading simulation — no web framework needed.
+
+# Tests
+pytest>=8.0
