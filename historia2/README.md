@@ -140,3 +140,40 @@ curl -s -X GET "http://localhost:8002/jobs/$JOB_ID/report" \
 ```
 
 Replace `http://localhost:8002` and ports/host with your deployment settings as needed.
+
+## Docker / Deployment
+
+This repository includes a `Dockerfile` and a `docker-compose.yml` to run the API together with PostgreSQL.
+
+Quick commands (from `historia2/`):
+
+```bash
+# start postgres + api (builds image if needed)
+docker compose up --build -d
+
+# follow logs (api + postgres)
+docker compose logs -f api
+
+# run tests in a disposable container (uses in-memory mode)
+docker compose run --rm tests
+
+# stop and remove containers + volumes
+docker compose down -v
+```
+
+Access the FastAPI interactive UI in your browser at:
+
+- Swagger UI: `http://localhost:8002/docs`
+- ReDoc: `http://localhost:8002/redoc`
+
+Use the `Authorize` button in Swagger UI to paste `Bearer <access_token>` for authenticated requests.
+
+If you prefer Docker Compose with an external Postgres instance, set `DATABASE_URL` in `.env` accordingly or export it before running.
+
+## Notes & Potential Inconsistencies
+
+- Port mapping in `docker-compose.yml` uses the `PORT` env var both for host and container (`${PORT:-8002}:${PORT:-8002}`). Make sure `PORT` is set in `.env` (default `8002`) — otherwise Docker will still map `8002:8002`.
+- `entrypoint.sh` runs `alembic upgrade head` when `DATABASE_URL` is present. `alembic.ini` contains a placeholder `sqlalchemy.url`; the project relies on the `DATABASE_URL` env var (set via `env_file: .env`) to override it. This is expected but ensure `.env` has the correct `DATABASE_URL` when using Postgres.
+- The `tests` service overrides the entrypoint to run `pytest` in-memory (it sets `DATABASE_URL=""`). This is intentional so CI/test runs don't depend on Postgres.
+- Alembic and `httpx` are installed via `requirements.txt` and included in the Docker image — the container entrypoint expects the `alembic` CLI to be available (it is, given current `requirements.txt`).
+- JWT secret: the `.env` file contains `JWT_SECRET`; change it for any real deployment. The code also defines a longer default secret for local runs, but the `.env` value takes precedence.
