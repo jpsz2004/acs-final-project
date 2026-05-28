@@ -3,15 +3,24 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 
 from app.application.dtos import (
+    AuthResponseDTO,
     CreateJobRequestDTO,
     CreateJobResponseDTO,
     JobStatusResponseDTO,
+    LoginRequestDTO,
+    RegisterRequestDTO,
     RegisterWebhookRequestDTO,
     RegisterWebhookResponseDTO,
     TextResultDTO,
 )
-from app.application.errors import BatchTooLargeError, ForbiddenError, JobNotFoundError
-from app.application.services import JobService, WebhookService
+from app.application.errors import (
+    AuthenticationError,
+    BatchTooLargeError,
+    ForbiddenError,
+    JobNotFoundError,
+    UserAlreadyExistsError,
+)
+from app.application.services import AuthService, JobService, JwtService, WebhookService
 from app.domain.models import Job
 from app.presentation.auth import get_current_user_id
 from app.presentation.websocket_manager import WebSocketManager
@@ -21,8 +30,9 @@ def build_router(
     *,
     job_service_provider: callable,
     webhook_service_provider: callable,
+    auth_service_provider: callable,
     ws_manager: WebSocketManager,
-    settings_provider: callable,
+    jwt_service_provider: callable,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -32,15 +42,35 @@ def build_router(
     def get_webhook_service() -> WebhookService:
         return webhook_service_provider()
 
-    def _check_ws_auth(*, websocket: WebSocket, expected_user_id: str) -> None:
-        settings = settings_provider()
-        x_user_id = websocket.headers.get("x-user-id")
-        x_api_key = websocket.headers.get("x-api-key")
+    def get_auth_service() -> AuthService:
+        return auth_service_provider()
 
-        if x_user_id != expected_user_id:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user")
-        if settings.api_key is not None and x_api_key != settings.api_key:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+    def get_jwt_service() -> JwtService:
+        return jwt_service_provider()
+
+    @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=AuthResponseDTO)
+    def register(
+        payload: RegisterRequestDTO,
+        auth_service: AuthService = Depends(get_auth_service),
+    ) -> AuthResponseDTO:
+        try:
+            token = auth_service.register(email=payload.email, password=payload.password)
+        except UserAlreadyExistsError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+        return AuthResponseDTO(access_token=token)
+
+    @router.post("/login", response_model=AuthResponseDTO)
+    def login(
+        payload: LoginRequestDTO,
+        auth_service: AuthService = Depends(get_auth_service),
+    ) -> AuthResponseDTO:
+        try:
+            token = auth_service.login(email=payload.email, password=payload.password)
+        except AuthenticationError as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+
+        return AuthResponseDTO(access_token=token)
 
     @router.post("/jobs", status_code=status.HTTP_202_ACCEPTED, response_model=CreateJobResponseDTO)
     def create_job(
@@ -80,6 +110,7 @@ def build_router(
                     status=t.status.value,
                     language=t.language,
                     sentiment=t.sentiment,
+                    score=t.score,
                     error=t.error,
                 )
                 for t in job.texts
@@ -96,8 +127,26 @@ def build_router(
         return RegisterWebhookResponseDTO(user_id=user_id, callback_url=payload.callback_url)
 
     @router.websocket("/ws/jobs/{user_id}")
-    async def ws_jobs(websocket: WebSocket, user_id: str) -> None:
-        _check_ws_auth(websocket=websocket, expected_user_id=user_id)
+    async def ws_jobs(websocket: WebSocket, user_id: str, jwt_service: JwtService = Depends(get_jwt_service)) -> None:
+        # Extract token from query params or close with 1008
+        token = websocket.query_params.get("token")
+        if not token:
+            await websocket.close(code=1008, reason="Missing token")
+            return
+
+        # Verify JWT token
+        try:
+            decoded_user_id = jwt_service.verify_token(token)
+        except AuthenticationError:
+            await websocket.close(code=1008, reason="Invalid or expired token")
+            return
+
+        # Verify user_id matches
+        if decoded_user_id != user_id:
+            await websocket.close(code=1008, reason="Token user mismatch")
+            return
+
+        # Auth passed — connect and listen
         await ws_manager.connect(user_id, websocket)
         try:
             while True:

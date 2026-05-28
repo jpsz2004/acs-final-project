@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 from uuid import uuid4
+
+
+class InvalidEmailError(ValueError):
+    pass
 
 
 class JobStatus(str, Enum):
@@ -20,12 +25,40 @@ class TextStatus(str, Enum):
     failed = "failed"
 
 
+@dataclass(frozen=True)
+class Email:
+    value: str
+
+    def __post_init__(self) -> None:
+        normalized = self.value.strip().lower()
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", normalized):
+            raise InvalidEmailError("Invalid email address")
+        object.__setattr__(self, "value", normalized)
+
+
+@dataclass(frozen=True)
+class Password:
+    hashed: str
+
+
+@dataclass
+class User:
+    user_id: str
+    email: Email
+    password: Password
+
+    @staticmethod
+    def new(email: Email, password: Password) -> "User":
+        return User(user_id=str(uuid4()), email=email, password=password)
+
+
 @dataclass
 class Text:
     text_id: str
     content: str
     language: Optional[str] = None
     sentiment: Optional[str] = None
+    score: float = 0.0
     status: TextStatus = TextStatus.pending
     error: Optional[str] = None
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from app.domain.events import JobCompletedEvent
-from app.domain.models import Job
+from app.domain.models import Job, User
 
 
 class JobRepository(Protocol):
@@ -22,11 +22,20 @@ class JobRepository(Protocol):
         *,
         language: str | None,
         sentiment: str | None,
+        score: float | None,
         failed: bool,
         error: str | None,
     ) -> None: ...
 
     def try_mark_notified(self, job_id: str) -> bool: ...
+
+
+class UserRepository(Protocol):
+    def save(self, user: User) -> None: ...
+
+    def get_by_email(self, email: str) -> User | None: ...
+
+    def get_by_id(self, user_id: str) -> User | None: ...
 
 
 class WebhookRepository(Protocol):
@@ -36,7 +45,7 @@ class WebhookRepository(Protocol):
 
 
 class TextAnalyzer(Protocol):
-    def analyze(self, text: str) -> tuple[str | None, str]: ...
+    def analyze(self, text: str) -> tuple[str | None, str, float]: ...
 
 
 class NotificationService(Protocol):

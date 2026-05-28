@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import datetime
 import queue
 
-from app.application.errors import BatchTooLargeError
-from app.application.ports import JobRepository, WebhookRepository
+import jwt
+
+from app.application.errors import (
+    ApplicationError,
+    AuthenticationError,
+    BatchTooLargeError,
+    UserAlreadyExistsError,
+)
+from app.application.ports import JobRepository, TextAnalyzer, UserRepository, WebhookRepository
 from app.domain.commands import TextAnalysisCommand
-from app.domain.models import Job
+from app.domain.models import Email, Job, Password, User
 
 
 class JobService:
@@ -40,3 +48,62 @@ class WebhookService:
 
     def get_callback_url(self, *, user_id: str) -> str | None:
         return self._repo.get_callback_url(user_id=user_id)
+
+
+class JwtService:
+    def __init__(
+        self,
+        secret: str,
+        algorithm: str = "HS256",
+        expiration_seconds: int = 3600,
+    ) -> None:
+        self._secret = secret
+        self._algorithm = algorithm
+        self._expiration_seconds = expiration_seconds
+
+    def create_token(self, user_id: str) -> str:
+        payload = {
+            "sub": user_id,
+            "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=self._expiration_seconds),
+        }
+        return jwt.encode(payload, self._secret, algorithm=self._algorithm)
+
+    def verify_token(self, token: str) -> str:
+        try:
+            payload = jwt.decode(token, self._secret, algorithms=[self._algorithm])
+            subject = payload.get("sub")
+            if not isinstance(subject, str):
+                raise AuthenticationError("Invalid token payload")
+            return subject
+        except jwt.PyJWTError as exc:
+            raise AuthenticationError("Invalid or expired token") from exc
+
+
+class AuthService:
+    def __init__(
+        self,
+        *,
+        user_repo: UserRepository,
+        hasher: object,
+        jwt_service: JwtService,
+    ) -> None:
+        self._user_repo = user_repo
+        self._hasher = hasher
+        self._jwt_service = jwt_service
+
+    def register(self, *, email: str, password: str) -> str:
+        user_email = Email(email)
+        existing_user = self._user_repo.get_by_email(user_email.value)
+        if existing_user is not None:
+            raise UserAlreadyExistsError("User already exists")
+
+        hashed_password = self._hasher.hash_password(password)
+        user = User.new(email=user_email, password=Password(hashed=hashed_password))
+        self._user_repo.save(user)
+        return self._jwt_service.create_token(user.user_id)
+
+    def login(self, *, email: str, password: str) -> str:
+        user = self._user_repo.get_by_email(email)
+        if user is None or not self._hasher.verify(password, user.password.hashed):
+            raise AuthenticationError("Invalid email or password")
+        return self._jwt_service.create_token(user.user_id)

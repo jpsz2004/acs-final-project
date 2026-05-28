@@ -17,6 +17,7 @@ class TextResultDTO(BaseModel):
     status: str
     language: str | None = None
     sentiment: str | None = None
+    score: float | None = None
     error: str | None = None
 
 
@@ -36,3 +37,18 @@ class RegisterWebhookRequestDTO(BaseModel):
 class RegisterWebhookResponseDTO(BaseModel):
     user_id: str
     callback_url: AnyUrl
+
+
+class RegisterRequestDTO(BaseModel):
+    email: str = Field(..., pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    password: str = Field(..., min_length=6)
+
+
+class LoginRequestDTO(BaseModel):
+    email: str
+    password: str
+
+
+class AuthResponseDTO(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
