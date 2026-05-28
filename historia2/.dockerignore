@@ -1,0 +1,30 @@
+# .dockerignore — Historia 2
+# Excluye archivos que no deben entrar en la imagen Docker.
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Cache de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Tests y cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Herramientas de desarrollo
+.git/
+.gitignore
+.DS_Store
+
+# Secretos — nunca entran en la imagen
+.env
+
+# Documentación
+*.md
