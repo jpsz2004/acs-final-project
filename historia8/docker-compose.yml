@@ -1,0 +1,15 @@
+services:
+
+  simulation:
+    build: .
+    env_file: .env
+    # Keeps stdout unbuffered so logs appear in real time
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  tests:
+    build: .
+    env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["python", "-m", "pytest", "tests/", "-v", "--tb=short"]
