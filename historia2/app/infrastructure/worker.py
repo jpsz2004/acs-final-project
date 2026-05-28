@@ -44,13 +44,14 @@ class Worker(threading.Thread):
 
                 job = self._repo.get(command.job_id)
                 text = next(t for t in job.texts if t.text_id == command.text_id)
-                language, sentiment = self._analyzer.analyze(text.content)
+                language, sentiment, score = self._analyzer.analyze(text.content)
 
                 self._repo.set_text_result(
                     command.job_id,
                     command.text_id,
                     language=language,
                     sentiment=sentiment,
+                    score=score,
                     failed=False,
                     error=None,
                 )

@@ -14,3 +14,11 @@ class JobNotFoundError(ApplicationError):
 
 class ForbiddenError(ApplicationError):
     pass
+
+
+class UserAlreadyExistsError(ApplicationError):
+    pass
+
+
+class AuthenticationError(ApplicationError):
+    pass
