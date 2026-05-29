@@ -10,6 +10,9 @@ from app.domain.events import JobCompletedEvent
 from app.infrastructure.circuit_breaker import CircuitBreaker
 from app.infrastructure.webhook_client import WebhookClient
 
+# Imported lazily only for typing; avoids circular imports at runtime.
+from app.presentation.websocket_manager import WebSocketManager  # noqa: E402  isort: skip
+
 logger = logging.getLogger(__name__)
 
 
@@ -79,5 +82,4 @@ class NotificationServiceImpl(NotificationService):
                 time.sleep(backoff_s)
 
 
-# Imported lazily only for typing; avoids circular imports at runtime.
-from app.presentation.websocket_manager import WebSocketManager  # noqa: E402  isort: skip
+
