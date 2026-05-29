@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Column, Float, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, Float, ForeignKey, String, Text
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -13,7 +13,12 @@ class UserModel(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
 
-    jobs = relationship("JobModel", back_populates="user", cascade="all, delete-orphan", lazy="selectin")
+    jobs = relationship(
+        "JobModel",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
 
 class JobModel(Base):
@@ -23,8 +28,17 @@ class JobModel(Base):
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     status = Column(String(32), nullable=False)
 
+    # Guards exactly-once JobCompletedEvent publishing.
+    # Workers use try_mark_notified() which does an atomic UPDATE WHERE notified=false.
+    notified = Column(Boolean, nullable=False, default=False)
+
     user = relationship("UserModel", back_populates="jobs")
-    texts = relationship("TextModel", back_populates="job", cascade="all, delete-orphan", lazy="joined")
+    texts = relationship(
+        "TextModel",
+        back_populates="job",
+        cascade="all, delete-orphan",
+        lazy="joined",
+    )
 
 
 class TextModel(Base):

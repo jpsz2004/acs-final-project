@@ -1,0 +1,65 @@
+# docker-compose.yml — Historia 5
+# ─────────────────────────────────────────────────────────────────────────────
+# Servicios:
+#   postgres  — PostgreSQL 16
+#   api       — FastAPI + Workers + WebSocket + EventBus
+#   tests     — pytest en modo in-memory (sin DB, sin Postgres)
+#
+# Uso:
+#   docker compose up                  # levanta postgres + api
+#   docker compose run --rm tests      # corre los tests
+#   docker compose down -v             # destruye contenedores y volúmenes
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── API ─────────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "${PORT:-8005}:${PORT:-8005}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Tests ───────────────────────────────────────────────────────────────────
+  # Runs pytest with in-memory repositories.
+  # Does NOT depend on postgres — no DATABASE_URL means InMemory repos.
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+      DATABASE_URL: ""
+    entrypoint: ["python", "-m", "pytest", "tests/", "-v", "--tb=short"]
+
+volumes:
+  postgres_data:
